@@ -7,13 +7,14 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/omnitoken/"><img src="https://img.shields.io/pypi/v/omnitoken?style=for-the-badge&logo=pypi&logoColor=white&color=3776AB" alt="PyPI Package"></a>
-  <a href="https://pypi.org/project/omnitoken/"><img src="https://img.shields.io/pypi/dm/omnitoken?style=for-the-badge&logo=pypi&logoColor=white&color=2B5B84" alt="PyPI Downloads"></a>
-  <a href="https://github.com/SunayHegde2006/OmniToken/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/SunayHegde2006/OmniToken/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI&color=10b981" alt="CI Status"></a>
-  <a href="https://github.com/SunayHegde2006/OmniToken"><img src="https://img.shields.io/badge/status-v0.2.0--production-00b4d8?style=for-the-badge&logo=rust&logoColor=white" alt="Release Status"></a>
-  <a href="https://pypi.org/project/omnitoken/"><img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-4b5563?style=for-the-badge&logo=python&logoColor=white" alt="Platform Support"></a>
-  <a href="#empirical-benchmark-results"><img src="https://img.shields.io/badge/throughput-1.77%20GB%2Fs-6366f1?style=for-the-badge&logo=speedtest&logoColor=white" alt="Throughput Benchmark"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-7c3aed?style=for-the-badge" alt="MIT License"></a>
+  <a href="https://pypi.org/project/omnitoken/"><img src="https://img.shields.io/pypi/v/omnitoken?color=blue&logo=pypi&logoColor=white" alt="PyPI Package"></a>
+  <a href="https://pypi.org/project/omnitoken/"><img src="https://img.shields.io/pypi/dm/omnitoken?color=blue&logo=pypi&logoColor=white" alt="PyPI Downloads"></a>
+  <a href="https://github.com/SunayHegde2006/OmniToken/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/SunayHegde2006/OmniToken/ci.yml?branch=main&label=CI&logo=github" alt="CI Build"></a>
+  <a href="https://pypi.org/project/omnitoken/"><img src="https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-informational" alt="Supported Platforms"></a>
+  <a href="#empirical-benchmark-results"><img src="https://img.shields.io/badge/status-production--ready-success" alt="Status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT licensed"></a>
+  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-1.85%2B-orange.svg" alt="Rust"></a>
+  <a href="#empirical-benchmark-results"><img src="https://img.shields.io/badge/throughput-1.77%20GB%2Fs-success.svg" alt="Throughput"></a>
 </p>
 
 ---
