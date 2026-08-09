@@ -136,6 +136,7 @@ impl HotCache {
         self.sketch.increment(pretoken);
 
         // Auto-trigger RCU rebuild when access threshold reached
+        #[allow(clippy::manual_is_multiple_of)]
         if self.access_count % 10_000 == 0 && !self.overflow.is_empty() {
             self.rebuild_hot_tier(64);
         }
@@ -170,7 +171,7 @@ impl HotCache {
         let mut new_tier = StaticMphfTier::new(cap);
 
         for (fp, entry) in entries.iter().take(top_k) {
-            let idx = ((*fp).0 as usize) & new_tier.mask;
+            let idx = (fp.0 as usize) & new_tier.mask;
             if new_tier.slots[idx].is_none() {
                 new_tier.slots[idx] = Some(MphfSlot {
                     fp: **fp,

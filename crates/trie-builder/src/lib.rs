@@ -141,7 +141,7 @@ fn find_node_raw(nodes: &[TrieNode], token: &[u8]) -> Option<NodeId> {
     Some(cur)
 }
 
-fn build_fail_and_pop_links(nodes: &mut Vec<TrieNode>) {
+fn build_fail_and_pop_links(nodes: &mut [TrieNode]) {
     let mut queue = VecDeque::new();
     let root_children: Vec<(u8, NodeId)> =
         nodes[ROOT as usize].children.iter().map(|(&b, &n)| (b, n)).collect();
