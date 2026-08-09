@@ -71,13 +71,8 @@ pub fn wordpiece_encode(word: &str, trie: &Trie, unk_id: Option<u32>) -> Result<
         let mut matched_id = None;
 
         while start < cur_end {
-            let mut sub = Vec::new();
-            if start > 0 {
-                sub.extend_from_slice(&trie.cont_prefix);
-            }
-            sub.extend_from_slice(&word_bytes[start..cur_end]);
-
-            if let Some(node_id) = trie.find_node(&sub) {
+            let prefix = if start > 0 { &trie.cont_prefix[..] } else { &[] };
+            if let Some(node_id) = trie.find_subword(prefix, &word_bytes[start..cur_end]) {
                 if let Some(tok_id) = trie.nodes[node_id as usize].output {
                     matched_id = Some(tok_id);
                     break;

@@ -10,6 +10,7 @@ repository.workspace = true
 [lib]
 name = "omnitoken"
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [[bin]]
 name = "omnitoken"

@@ -41,7 +41,7 @@ impl PyTokenizer {
 
 #[cfg(feature = "python")]
 #[pymodule]
-fn _omnitoken(_py: Python, m: &PyModule) -> PyResult<()> {
+fn _omnitoken(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyTokenizer>()?;
     Ok(())
 }

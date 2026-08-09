@@ -44,8 +44,16 @@ impl Trie {
     /// Walk the trie starting from root for `bytes`.
     /// Returns the terminal node id if the full string matches.
     pub fn find_node(&self, bytes: &[u8]) -> Option<NodeId> {
+        self.find_subword(&[], bytes)
+    }
+
+    /// Walk optional prefix then slice without allocating a heap Vec.
+    pub fn find_subword(&self, prefix: &[u8], slice: &[u8]) -> Option<NodeId> {
         let mut cur = ROOT;
-        for &b in bytes {
+        for &b in prefix {
+            cur = *self.nodes[cur as usize].children.get(&b)?;
+        }
+        for &b in slice {
             cur = *self.nodes[cur as usize].children.get(&b)?;
         }
         Some(cur)

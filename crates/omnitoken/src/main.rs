@@ -58,8 +58,11 @@ fn main() -> Result<()> {
                         ids.extend(word_ids);
                     }
                 }
-                let out: Vec<String> = ids.iter().map(|i| i.to_string()).collect();
-                println!("{}", out.join(" "));
+                for (idx, id) in ids.iter().enumerate() {
+                    if idx > 0 { print!(" "); }
+                    print!("{id}");
+                }
+                println!();
             }
         }
     }

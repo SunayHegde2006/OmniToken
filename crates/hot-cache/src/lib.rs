@@ -22,10 +22,7 @@ pub struct CountMinSketch {
 impl CountMinSketch {
     pub fn new(depth: usize, width: usize) -> Self {
         let size = depth * width;
-        let mut counters = Vec::with_capacity(size);
-        for _ in 0..size {
-            counters.push(AtomicU64::new(0));
-        }
+        let counters = (0..size).map(|_| AtomicU64::new(0)).collect();
         Self { depth, width, counters }
     }
 
