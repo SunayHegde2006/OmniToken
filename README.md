@@ -208,6 +208,22 @@ All core performance claims, SIMD vectorization routines, and roofline sanity ch
 
 ## Quick Start & Usage
 
+### Python (PyPI)
+
+```bash
+pip install omnitoken
+```
+
+```python
+from omnitoken import Tokenizer
+
+tok = Tokenizer("gpt2.json")
+ids = tok.encode("the quick brown fox")
+print(ids)  # [1169, 2068, 17354, 21831]
+```
+
+### CLI / Rust
+
 ### 1. Download Standard Vocab
 
 ```bash
@@ -241,6 +257,7 @@ echo "the quick brown fox jumps over the lazy dog" | ./target/release/omnitoken 
 ```
 
 ---
+
 
 ## Verification & Tests
 
