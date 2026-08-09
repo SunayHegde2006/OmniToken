@@ -199,6 +199,20 @@ impl HotCache {
     pub fn is_empty(&self) -> bool {
         self.overflow.is_empty()
     }
+
+    /// Spawn a background thread that periodically polls access frequency and performs RCU atomic tier swap.
+    pub fn spawn_background_rebuilder(cache: Arc<parking_lot::Mutex<HotCache>>, interval: std::time::Duration) -> std::thread::JoinHandle<()> {
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(interval);
+                let mut guard = cache.lock();
+                if guard.access_count >= 1000 {
+                    guard.rebuild_hot_tier(64);
+                    guard.access_count = 0;
+                }
+            }
+        })
+    }
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────

@@ -251,6 +251,125 @@ pub fn load_tiktoken(content: &str) -> Result<VocabIr> {
     Ok(ir)
 }
 
+// ─── SentencePiece binary .model Protobuf decoder ────────────────────────────
+
+/// Load a raw SentencePiece `.model` binary protobuf blob.
+pub fn load_sentencepiece_proto(bytes: &[u8]) -> Result<VocabIr> {
+    let mut vocab = HashMap::new();
+    let mut unigram_scores = Vec::new();
+
+    let mut cursor = 0;
+    let mut token_id = 0u32;
+
+    while cursor < bytes.len() {
+        let (tag, wire_type, next_c) = match read_varint(bytes, cursor) {
+            Ok((v, n)) => ((v >> 3) as u32, (v & 0x7) as u32, n),
+            Err(_) => break,
+        };
+        cursor = next_c;
+
+        if tag == 1 && wire_type == 2 {
+            // repeated ModelProto.PiecePiece pieces = 1;
+            let (len, n) = read_varint(bytes, cursor)?;
+            cursor = n;
+            let end = (cursor + len as usize).min(bytes.len());
+            let piece_bytes = &bytes[cursor..end];
+            cursor = end;
+
+            // Parse PiecePiece message
+            let mut piece_cursor = 0;
+            let mut piece_str = String::new();
+            let mut score = 0.0f32;
+
+            while piece_cursor < piece_bytes.len() {
+                let (ptag, pwire, pn) = match read_varint(piece_bytes, piece_cursor) {
+                    Ok((v, n)) => ((v >> 3) as u32, (v & 0x7) as u32, n),
+                    Err(_) => break,
+                };
+                piece_cursor = pn;
+
+                match (ptag, pwire) {
+                    (1, 2) => { // string piece = 1;
+                        let (plen, n2) = read_varint(piece_bytes, piece_cursor)?;
+                        piece_cursor = n2;
+                        let str_end = (piece_cursor + plen as usize).min(piece_bytes.len());
+                        piece_str = String::from_utf8_lossy(&piece_bytes[piece_cursor..str_end]).into_owned();
+                        piece_cursor = str_end;
+                    }
+                    (2, 5) => { // float score = 2; (fixed32)
+                        if piece_cursor + 4 <= piece_bytes.len() {
+                            let mut buf = [0u8; 4];
+                            buf.copy_from_slice(&piece_bytes[piece_cursor..piece_cursor + 4]);
+                            score = f32::from_le_bytes(buf);
+                            piece_cursor += 4;
+                        } else {
+                            break;
+                        }
+                    }
+                    (_, 0) => { // varint skip
+                        let (_, n2) = read_varint(piece_bytes, piece_cursor)?;
+                        piece_cursor = n2;
+                    }
+                    (_, 2) => { // length-delimited skip
+                        let (plen, n2) = read_varint(piece_bytes, piece_cursor)?;
+                        piece_cursor = (n2 + plen as usize).min(piece_bytes.len());
+                    }
+                    (_, 5) => piece_cursor += 4, // 32-bit skip
+                    (_, 1) => piece_cursor += 8, // 64-bit skip
+                    _ => break,
+                }
+            }
+
+            if !piece_str.is_empty() {
+                vocab.insert(piece_str.clone(), token_id);
+                unigram_scores.push(UnigramScore { token: piece_str, score });
+                token_id += 1;
+            }
+        } else {
+            // Skip other fields
+            match wire_type {
+                0 => { let (_, n) = read_varint(bytes, cursor)?; cursor = n; }
+                2 => { let (len, n) = read_varint(bytes, cursor)?; cursor = (n + len as usize).min(bytes.len()); }
+                5 => cursor += 4,
+                1 => cursor += 8,
+                _ => break,
+            }
+        }
+    }
+
+    if vocab.is_empty() {
+        bail!("No valid vocabulary pieces found in raw SentencePiece protobuf binary");
+    }
+
+    let ir = VocabIr {
+        algo: AlgoKind::Unigram,
+        vocab,
+        merge_rules: vec![],
+        unigram_scores,
+        continuation_prefix: None,
+    };
+    ir.validate()?;
+    Ok(ir)
+}
+
+fn read_varint(bytes: &[u8], mut cursor: usize) -> Result<(u64, usize)> {
+    let mut val = 0u64;
+    let mut shift = 0;
+    while cursor < bytes.len() {
+        let b = bytes[cursor];
+        cursor += 1;
+        val |= ((b & 0x7F) as u64) << shift;
+        if (b & 0x80) == 0 {
+            return Ok((val, cursor));
+        }
+        shift += 7;
+        if shift >= 64 {
+            bail!("varint overflow");
+        }
+    }
+    bail!("unexpected EOF reading varint")
+}
+
 // ─── Base64 decoder supporting both RFC 4648 standard and URL-safe ─────────────
 
 fn b64_decode(s: &str) -> Result<Vec<u8>> {

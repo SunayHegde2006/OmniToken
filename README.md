@@ -10,7 +10,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT licensed"></a>
   <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-1.85%2B-orange.svg" alt="Rust"></a>
   <a href="#empirical-benchmark-results"><img src="https://img.shields.io/badge/throughput-1.77%20GB%2Fs-success.svg" alt="Throughput"></a>
-  <a href="https://github.com/SunayHegde2006/OmniToken"><img src="https://img.shields.io/badge/version-v0.1.0-green.svg" alt="Version"></a>
+  <a href="https://github.com/SunayHegde2006/OmniToken"><img src="https://img.shields.io/badge/version-v0.2.0-green.svg" alt="Version"></a>
 </p>
 
 ---
@@ -28,7 +28,6 @@
 - [System Architecture](#system-architecture)
   - [Workspace Directory Layout](#workspace-directory-layout)
   - [Dependency Architecture](#dependency-architecture)
-- [Branding & Visual Identity](#branding--visual-identity)
 - [AI Use Disclosure & Credit Attribution](#ai-use-disclosure--credit-attribution)
 - [Quick Start & Usage](#quick-start--usage)
 - [Verification & Tests](#verification--tests)
@@ -41,19 +40,17 @@
 OmniToken is a high-performance, universal tokenization engine written in Rust. It ingests every major tokenizer vocabulary format into one universal intermediate representation (`VocabIr`) and encodes with a unified automaton that executes **BPE**, **WordPiece**, and **Unigram** in the same trie-walk loop.
 
 - **Primary Competitor:** [gigatoken](https://github.com/marcelroed/gigatoken) — BPE engine benchmarked on a 144-core server.
-- **Our Wedge:** Universal format support (BPE, WordPiece, Unigram, tiktoken, SentencePiece, GGUF) + inference-time low latency + SWAR/AVX2 pretokenization + hybrid hot-tier cache grounded in PtrHash literature.
-
-Full technical architecture & design rationale: [`tokenizer-project-plan.md`](tokenizer-project-plan.md).
+- **Our Wedge:** Universal format support (BPE, WordPiece, Unigram, tiktoken, SentencePiece binary `.model`, GGUF) + inference-time low latency + SWAR/AVX2 pretokenization + hybrid hot-tier cache grounded in PtrHash literature.
 
 ---
 
 ## Key Features
 
 - ⚡ **1.77+ GB/s Multi-Core Throughput**: Scaled across 6 physical cores / 12 SMT threads on consumer DDR5 hardware.
-- 🎯 **Universal Vocab IR (`vocab-ir`)**: Ingest HuggingFace `tokenizers.json` (BPE/WordPiece/Unigram), tiktoken `.tiktoken` files, SentencePiece JSON, and GGUF metadata.
+- 🎯 **Universal Vocab IR (`vocab-ir`)**: Ingest HuggingFace `tokenizers.json` (BPE/WordPiece/Unigram), tiktoken `.tiktoken` files, SentencePiece binary `.model` protobuf blobs, and GGUF metadata.
 - 🔄 **Unified Automaton (`walker`)**: One trie walker handles BPE priority queues ($O(N \log M)$ per Zouhar et al.), WordPiece LinMaxMatch ($O(N)$ per Song et al.), and Unigram Viterbi DP.
 - 🚀 **SWAR / SIMD Pretokenizer (`pretokenizer`)**: 256-entry byte-class table with 8-byte u64 branchless SWAR dispatch and AVX2 vectorization (`x86-64-v3`).
-- 💎 **Hybrid Hot-Tier Cache (`hot-cache`)**: Lock-free RCU double-buffered static tier, XXH3-64 fingerprint verification, 64-byte padded `CountMinSketch`, and SwissTable fallback.
+- 💎 **Hybrid Hot-Tier Cache (`hot-cache`)**: Lock-free RCU double-buffered static tier, automatic background rebuild thread, XXH3-64 fingerprint verification, 64-byte padded `CountMinSketch`, and SwissTable fallback.
 - 📊 **Roofline-Grounded Benchmarking (`bench-harness`)**: Automated L3-resident vs DRAM-resident throughput validation against physical hardware bandwidth limits.
 
 ---
@@ -131,7 +128,7 @@ omnitoken encode --vocab <path> [OPTIONS]
 
 | Flag | Short | Type | Default | Description |
 |---|---|---|---|---|
-| `--vocab` | `-v` | path | **required** | Path to `tokenizers.json` or `.tiktoken` file. |
+| `--vocab` | `-v` | path | **required** | Path to `tokenizers.json`, `.tiktoken`, or `.model` binary. |
 | `--input` | `-i` | string | `stdin` | Direct input text string to tokenize. |
 
 </details>
@@ -146,7 +143,7 @@ bench --vocab <path> [OPTIONS]
 
 | Flag | Short | Type | Default | Description |
 |---|---|---|---|---|
-| `--vocab` | `-v` | path | **required** | Path to HuggingFace `tokenizers.json`. |
+| `--vocab` | `-v` | path | **required** | Path to HuggingFace `tokenizers.json` or `.model`. |
 | `--corpus` | `-c` | path | `synthetic` | Optional path to text corpus file. |
 | `--threads` | `-t` | int | `1` | Number of Rayon threads (1 = single-thread baseline). |
 | `--bytes` | `-b` | int | `16777216` | Bytes of synthetic corpus to generate if no file provided. |
@@ -163,12 +160,12 @@ bench --vocab <path> [OPTIONS]
 
 ```text
 crates/
-├── vocab-ir/        # Universal IR loader (HF tokenizers.json, tiktoken, SPM, GGUF)
+├── vocab-ir/        # Universal IR loader (HF tokenizers.json, tiktoken, SPM proto, GGUF)
 ├── trie-builder/    # Offline Aho-Corasick trie + failure links & continuation prefixes
 ├── pretokenizer/    # SWAR / AVX2 256-entry byte classifier & UTF-8 chunk splitter
 ├── walker/          # Unified automaton: O(N log M) BPE, MaxMatch WordPiece, Viterbi Unigram
-├── hot-cache/       # Hybrid MPHF static tier + CountMin sketch + SwissTable overflow
-├── omnitoken/       # Unified CLI binary + mimalloc allocator configuration
+├── hot-cache/       # Hybrid MPHF static tier + CountMin sketch + SwissTable overflow + RCU thread
+├── omnitoken/       # Unified CLI binary + PyO3 Python bindings + mimalloc allocator
 └── bench-harness/   # Reproducible roofline-checked benchmark harness
 ```
 
@@ -181,16 +178,6 @@ vocab-ir ────────► trie-builder ──────► walker �
                                            │
                                      omnitoken / bench-harness
 ```
-
----
-
-## Branding & Visual Identity
-
-<p align="center">
-  <img src="assets/logo.svg" alt="OmniToken Logo" width="128" height="128">
-</p>
-
-The OmniToken mark is an abstract monogram **"O"** constructed from 6 discrete rounded-square token blocks arranged in a ring on a dark tile (`#14161A`). Five blocks use deep teal (`#0F6E56` / `#1D9E75`) representing the static vocabulary and token automaton, while one warm coral accent block (`#F0997B`) marks the active entry point where input bytes enter the pretokenization pipeline.
 
 ---
 

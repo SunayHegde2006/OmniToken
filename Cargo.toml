@@ -11,7 +11,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version    = "0.1.0"
+version    = "0.2.0"
 edition    = "2021"
 license    = "MIT"
 authors    = ["OmniToken Contributors"]
@@ -35,6 +35,8 @@ serde_json = "1"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 # mimalloc: faster small-allocation allocator (Section 4.6)
 mimalloc = { version = "0.1", default-features = false }
+parking_lot = "0.12"
+pyo3 = { version = "0.21", features = ["extension-module"] }
 
 # ── Release build configuration (Section 4.6) ──────────────────────────────
 # target-cpu=native: set via .cargo/config.toml (below) not here, to avoid

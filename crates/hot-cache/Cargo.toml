@@ -10,4 +10,5 @@ repository.workspace = true
 [dependencies]
 hashbrown.workspace  = true
 xxhash-rust.workspace = true
+parking_lot.workspace = true
 anyhow.workspace     = true

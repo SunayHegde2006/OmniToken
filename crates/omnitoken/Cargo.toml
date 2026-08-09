@@ -26,3 +26,11 @@ anyhow.workspace  = true
 rayon.workspace   = true
 # mimalloc: faster small-allocation allocator (Section 4.6)
 mimalloc.workspace = true
+
+[features]
+default = []
+python = ["dep:pyo3"]
+
+[dependencies.pyo3]
+workspace = true
+optional = true
