@@ -1,0 +1,28 @@
+[package]
+name        = "omnitoken"
+description = "OmniToken — universal tokenizer for BPE, WordPiece, and Unigram vocabularies, targeting consumer hardware."
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+authors.workspace    = true
+repository.workspace = true
+
+[lib]
+name = "omnitoken"
+path = "src/lib.rs"
+
+[[bin]]
+name = "omnitoken"
+path = "src/main.rs"
+
+[dependencies]
+vocab-ir     = { path = "../vocab-ir" }
+trie-builder = { path = "../trie-builder" }
+pretokenizer = { path = "../pretokenizer" }
+walker       = { path = "../walker" }
+hot-cache    = { path = "../hot-cache" }
+clap.workspace    = true
+anyhow.workspace  = true
+rayon.workspace   = true
+# mimalloc: faster small-allocation allocator (Section 4.6)
+mimalloc.workspace = true

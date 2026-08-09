@@ -1,0 +1,12 @@
+[package]
+name        = "pretokenizer"
+description = "Branchless SWAR byte-classification + UTF-8 boundary-safe chunk splitter. AVX2/AVX-512 paths stubbed for Phase 4 benchmarking."
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+authors.workspace    = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+rayon.workspace  = true

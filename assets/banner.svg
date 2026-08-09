@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320">
+  <!-- Dark Tile Background -->
+  <rect width="1280" height="320" rx="24" fill="#14161A" />
+  
+  <g transform="translate(180, 160)">
+    <!-- Monogram "O" -->
+    <g transform="scale(0.85)">
+      <!-- Block 0: Top (Warm Coral Accent) -->
+      <g transform="rotate(0) translate(0, -68) rotate(0)">
+        <rect x="-18" y="-18" width="36" height="36" rx="7.2" fill="#F0997B" />
+      </g>
+      <!-- Block 1: Top-Right (Deep Teal) -->
+      <g transform="rotate(60) translate(0, -68) rotate(-60)">
+        <rect x="-18" y="-18" width="36" height="36" rx="7.2" fill="#1D9E75" />
+      </g>
+      <!-- Block 2: Bottom-Right (Deep Teal) -->
+      <g transform="rotate(120) translate(0, -68) rotate(-120)">
+        <rect x="-18" y="-18" width="36" height="36" rx="7.2" fill="#1D9E75" />
+      </g>
+      <!-- Block 3: Bottom (Deep Teal) -->
+      <g transform="rotate(180) translate(0, -68) rotate(-180)">
+        <rect x="-18" y="-18" width="36" height="36" rx="7.2" fill="#0F6E56" />
+      </g>
+      <!-- Block 4: Bottom-Left (Deep Teal) -->
+      <g transform="rotate(240) translate(0, -68) rotate(-240)">
+        <rect x="-18" y="-18" width="36" height="36" rx="7.2" fill="#1D9E75" />
+      </g>
+      <!-- Block 5: Top-Left (Deep Teal) -->
+      <g transform="rotate(300) translate(0, -68) rotate(-300)">
+        <rect x="-18" y="-18" width="36" height="36" rx="7.2" fill="#1D9E75" />
+      </g>
+    </g>
+
+    <!-- Wordmark & Subtitle -->
+    <text x="140" y="8" font-family="Inter, system-ui, sans-serif" font-weight="500" font-size="64" fill="#FFFFFF" letter-spacing="-1">omnitoken</text>
+    <text x="142" y="44" font-family="Inter, system-ui, sans-serif" font-weight="400" font-size="20" fill="#1D9E75" letter-spacing="0.5">UNIVERSAL HIGH-PERFORMANCE TOKENIZER ENGINE</text>
+  </g>
+</svg>

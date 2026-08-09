@@ -1,0 +1,21 @@
+[package]
+name        = "bench-harness"
+description = "Reproducible benchmark + roofline sanity checker. Reports single/multi-thread, in-memory/disk-streaming throughput separately (Section 6)."
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+authors.workspace    = true
+repository.workspace = true
+
+[[bin]]
+name = "bench"
+path = "src/main.rs"
+
+[dependencies]
+vocab-ir     = { path = "../vocab-ir" }
+trie-builder  = { path = "../trie-builder" }
+pretokenizer  = { path = "../pretokenizer" }
+walker       = { path = "../walker" }
+clap.workspace    = true
+anyhow.workspace  = true
+rayon.workspace   = true

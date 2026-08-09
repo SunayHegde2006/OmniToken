@@ -1,0 +1,6 @@
+/target/
+*.tiktoken
+*.pb
+*.gguf
+/graphify-out/*
+tokenizer-project-plan.md

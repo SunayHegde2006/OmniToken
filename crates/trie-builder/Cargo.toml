@@ -1,0 +1,12 @@
+[package]
+name        = "trie-builder"
+description = "Offline Aho-Corasick-style trie construction with failure links and failure pops (Song et al. EMNLP 2020)."
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+authors.workspace    = true
+repository.workspace = true
+
+[dependencies]
+vocab-ir = { path = "../vocab-ir" }
+anyhow.workspace = true

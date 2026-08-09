@@ -1,0 +1,15 @@
+[package]
+name        = "walker"
+description = "Unified single-pass automaton: O(N log M) BPE (Zouhar et al.), WordPiece/Unigram stubs for Phase 2."
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+authors.workspace    = true
+repository.workspace = true
+
+[dependencies]
+vocab-ir     = { path = "../vocab-ir" }
+trie-builder = { path = "../trie-builder" }
+pretokenizer = { path = "../pretokenizer" }
+priority-queue.workspace = true
+anyhow.workspace         = true

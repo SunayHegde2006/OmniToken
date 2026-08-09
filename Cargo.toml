@@ -1,0 +1,47 @@
+[workspace]
+members = [
+    "crates/vocab-ir",
+    "crates/trie-builder",
+    "crates/pretokenizer",
+    "crates/walker",
+    "crates/hot-cache",
+    "crates/bench-harness",
+    "crates/omnitoken",
+]
+resolver = "2"
+
+[workspace.package]
+version    = "0.1.0"
+edition    = "2021"
+license    = "MIT"
+authors    = ["OmniToken Contributors"]
+repository = "https://github.com/sunayhegde/Omnitoken"
+
+[workspace.dependencies]
+# BPE O(N log M) merge — priority queue
+priority-queue = "2"
+# SwissTable adaptive hash map (overflow cache + internal lookup)
+hashbrown = "0.14"
+# Parallel iteration
+rayon = "1"
+# Error handling
+anyhow = "1"
+# CLI
+clap = { version = "4", features = ["derive"] }
+# Serde for vocab JSON loading
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+# XXH3-64 for hot-tier fingerprinting (see plan Section 3 / PtrHash eval)
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+# mimalloc: faster small-allocation allocator (Section 4.6)
+mimalloc = { version = "0.1", default-features = false }
+
+# ── Release build configuration (Section 4.6) ──────────────────────────────
+# target-cpu=native: set via .cargo/config.toml (below) not here, to avoid
+# LTO+native hang risk on some toolchain versions (rust-lang/rust #49766).
+# Fallback: x86-64-v3 (still gets AVX2, see .cargo/config.toml).
+[profile.release]
+opt-level     = 3
+lto           = "fat"   # cross-crate inlining, global DCE
+codegen-units = 1       # required for fat LTO
+panic         = "abort" # no unwinding tables; tokenizer has no catch-and-continue use case

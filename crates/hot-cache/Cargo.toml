@@ -1,0 +1,13 @@
+[package]
+name        = "hot-cache"
+description = "Hybrid MPHF hot-tier + XXH3-64 fingerprinting + SwissTable overflow cache. Phase 1: SwissTable only; MPHF/RCU in Phase 3."
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+authors.workspace    = true
+repository.workspace = true
+
+[dependencies]
+hashbrown.workspace  = true
+xxhash-rust.workspace = true
+anyhow.workspace     = true

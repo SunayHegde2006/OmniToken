@@ -1,0 +1,13 @@
+[package]
+name        = "vocab-ir"
+description = "Universal vocabulary IR — loads HF tokenizers.json (BPE/WordPiece/Unigram), tiktoken rank files; normalises to one internal schema."
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+authors.workspace    = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace      = true
+serde_json.workspace = true
+anyhow.workspace     = true
