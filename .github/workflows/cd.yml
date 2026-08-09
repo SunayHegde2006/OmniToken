@@ -31,6 +31,9 @@ jobs:
             target: x64
     steps:
       - uses: actions/checkout@v4
+      - name: Set up QEMU
+        if: matrix.target == 'aarch64' && matrix.os == 'ubuntu-latest'
+        uses: docker/setup-qemu-action@v3
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
