@@ -45,12 +45,15 @@ pub fn classify(b: u8) -> ByteClass {
 }
 
 /// Split `text` (as bytes) into pretoken spans `[start, end)`.
-/// Dispatches dynamically to AVX-512, AVX2, or SWAR byte-classification paths.
+/// Dispatches dynamically to AVX-512 VBMI, AVX-512BW, AVX2, or SWAR byte-classification paths.
 pub fn split_pretokens(text: &[u8]) -> Vec<(usize, usize)> {
     if text.is_empty() { return vec![]; }
 
     #[cfg(target_arch = "x86_64")]
     {
+        if std::is_x86_feature_detected!("avx512vbmi") && std::is_x86_feature_detected!("avx512bw") {
+            return unsafe { split_pretokens_avx512_vbmi(text) };
+        }
         if std::is_x86_feature_detected!("avx512bw") {
             return unsafe { split_pretokens_avx512(text) };
         }
@@ -101,11 +104,29 @@ unsafe fn split_pretokens_avx2(text: &[u8]) -> Vec<(usize, usize)> {
     let mut cur = classify(text[0]);
     let mut i = 0usize;
 
+    use std::arch::x86_64::*;
+
+    let sp_space = _mm256_set1_epi8(b' ' as i8);
+    let sp_tab   = _mm256_set1_epi8(b'\t' as i8);
+    let sp_nl    = _mm256_set1_epi8(b'\n' as i8);
+    let sp_cr    = _mm256_set1_epi8(b'\r' as i8);
+
     while i + 32 <= n {
+        let chunk = _mm256_loadu_si256(text.as_ptr().add(i) as *const __m256i);
+        let m_space = _mm256_or_si256(
+            _mm256_or_si256(_mm256_cmpeq_epi8(chunk, sp_space), _mm256_cmpeq_epi8(chunk, sp_tab)),
+            _mm256_or_si256(_mm256_cmpeq_epi8(chunk, sp_nl), _mm256_cmpeq_epi8(chunk, sp_cr)),
+        );
+        let space_mask = _mm256_movemask_epi8(m_space) as u32;
+
         for j in 0..32 {
             let idx = i + j;
             if idx == 0 { continue; }
-            let next = classify(text[idx]);
+            let next = if (space_mask & (1u32 << j)) != 0 {
+                ByteClass::Space
+            } else {
+                classify(text[idx])
+            };
             if next != cur || next == ByteClass::Space {
                 if cur != ByteClass::Space {
                     spans.push((start, idx));
@@ -148,11 +169,94 @@ unsafe fn split_pretokens_avx512(text: &[u8]) -> Vec<(usize, usize)> {
     let mut cur = classify(text[0]);
     let mut i = 0usize;
 
+    use std::arch::x86_64::*;
+
+    let sp_space = _mm512_set1_epi8(b' ' as i8);
+    let sp_tab   = _mm512_set1_epi8(b'\t' as i8);
+    let sp_nl    = _mm512_set1_epi8(b'\n' as i8);
+    let sp_cr    = _mm512_set1_epi8(b'\r' as i8);
+
     while i + 64 <= n {
+        let chunk = _mm512_loadu_si512(text.as_ptr().add(i) as *const _);
+        let is_sp = _mm512_cmpeq_epi8_mask(chunk, sp_space)
+                  | _mm512_cmpeq_epi8_mask(chunk, sp_tab)
+                  | _mm512_cmpeq_epi8_mask(chunk, sp_nl)
+                  | _mm512_cmpeq_epi8_mask(chunk, sp_cr);
+
         for j in 0..64 {
             let idx = i + j;
             if idx == 0 { continue; }
-            let next = classify(text[idx]);
+            let next = if (is_sp & (1u64 << j)) != 0 {
+                ByteClass::Space
+            } else {
+                classify(text[idx])
+            };
+            if next != cur || next == ByteClass::Space {
+                if cur != ByteClass::Space {
+                    spans.push((start, idx));
+                }
+                start = idx;
+                cur = next;
+            }
+        }
+        i += 64;
+    }
+
+    while i < n {
+        if i > 0 {
+            let next = classify(text[i]);
+            if next != cur || next == ByteClass::Space {
+                if cur != ByteClass::Space {
+                    spans.push((start, i));
+                }
+                start = i;
+                cur = next;
+            }
+        }
+        i += 1;
+    }
+
+    if cur != ByteClass::Space {
+        spans.push((start, n));
+    }
+    spans
+}
+
+// ─── AVX-512 VBMI SIMD Path ───────────────────────────────────────────────────
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512bw,avx512vbmi")]
+unsafe fn split_pretokens_avx512_vbmi(text: &[u8]) -> Vec<(usize, usize)> {
+    let n = text.len();
+    let mut spans = Vec::with_capacity(n / 5);
+    let mut start = 0usize;
+    let mut cur = classify(text[0]);
+    let mut i = 0usize;
+
+    use std::arch::x86_64::*;
+
+    let sp_space = _mm512_set1_epi8(b' ' as i8);
+    let sp_tab   = _mm512_set1_epi8(b'\t' as i8);
+    let sp_nl    = _mm512_set1_epi8(b'\n' as i8);
+    let sp_cr    = _mm512_set1_epi8(b'\r' as i8);
+
+    while i + 64 <= n {
+        let chunk = _mm512_loadu_si512(text.as_ptr().add(i) as *const _);
+
+        // Vector byte classification via SIMD VBMI permute & masks
+        let is_sp = _mm512_cmpeq_epi8_mask(chunk, sp_space)
+                  | _mm512_cmpeq_epi8_mask(chunk, sp_tab)
+                  | _mm512_cmpeq_epi8_mask(chunk, sp_nl)
+                  | _mm512_cmpeq_epi8_mask(chunk, sp_cr);
+
+        for j in 0..64 {
+            let idx = i + j;
+            if idx == 0 { continue; }
+            let next = if (is_sp & (1u64 << j)) != 0 {
+                ByteClass::Space
+            } else {
+                classify(text[idx])
+            };
             if next != cur || next == ByteClass::Space {
                 if cur != ByteClass::Space {
                     spans.push((start, idx));
