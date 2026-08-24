@@ -51,11 +51,10 @@ impl<T> HugePageBuffer<T> {
             return Self::Heap(src);
         }
 
-        let elem_size = std::mem::size_of::<T>();
-        let byte_size = len * elem_size;
-
         #[cfg(target_os = "linux")]
         {
+            let elem_size = std::mem::size_of::<T>();
+            let byte_size = len * elem_size;
             use libc::{mmap, MAP_ANONYMOUS, MAP_FAILED, MAP_HUGETLB, MAP_PRIVATE, PROT_READ, PROT_WRITE};
             unsafe {
                 let m_ptr = mmap(
@@ -120,8 +119,8 @@ impl<T> std::ops::DerefMut for HugePageBuffer<T> {
 
 impl<T> Drop for HugePageBuffer<T> {
     fn drop(&mut self) {
+        #[cfg(target_os = "linux")]
         if let Self::HugePage { ptr, capacity_bytes, .. } = self {
-            #[cfg(target_os = "linux")]
             unsafe {
                 libc::munmap(*ptr as *mut libc::c_void, *capacity_bytes);
             }
