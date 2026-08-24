@@ -11,7 +11,6 @@ use anyhow::Result;
 use clap::Parser;
 use rayon::prelude::*;
 use std::time::Instant;
-use std::collections::HashMap;
 
 #[derive(Parser)]
 #[command(
@@ -45,7 +44,6 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let ir   = vocab_ir::load_hf_file(&cli.vocab)?;
-    let merge_rank: HashMap<(String, String), u32> = walker::build_merge_rank(&ir);
 
     if cli.parity {
         println!("─── OmniToken Parity Verification Mode (§5) ─────────────────");
@@ -81,6 +79,8 @@ fn main() -> Result<()> {
     rayon::ThreadPoolBuilder::new().num_threads(cli.threads).build_global().ok();
     let chunks = pretokenizer::utf8_chunks(&text, cli.threads);
 
+    let trie = trie_builder::build(&ir)?;
+
     println!("─── OmniToken Benchmark ──────────────────────────────────────");
     println!("  vocab:    {}", cli.vocab.display());
     println!("  threads:  {}", cli.threads);
@@ -89,18 +89,7 @@ fn main() -> Result<()> {
 
     let t0 = Instant::now();
     let results: Vec<Result<Vec<u32>>> = chunks.par_iter().map(|chunk| {
-        let mut ids = Vec::with_capacity(chunk.len() / 4);
-        let mut cache: HashMap<&str, Vec<u32>> = HashMap::new();
-        for word in chunk.split_whitespace() {
-            if let Some(cached_ids) = cache.get(word) {
-                ids.extend_from_slice(cached_ids);
-            } else {
-                let encoded = walker::bpe_encode(word, &ir.vocab, &merge_rank)?;
-                cache.insert(word, encoded.clone());
-                ids.extend(encoded);
-            }
-        }
-        Ok(ids)
+        walker::encode(chunk, &ir, &trie)
     }).collect();
     let elapsed = t0.elapsed();
 
