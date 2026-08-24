@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "omnitoken"
-version = "0.2.0"
+version = "0.3.0"
 description = "Universal, research-grounded high-performance tokenizer engine for BPE, WordPiece, and Unigram vocabularies."
 readme = "README.md"
 authors = [

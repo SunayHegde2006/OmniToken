@@ -32,11 +32,13 @@ pub const ROOT: NodeId = 0;
 /// Memory-mapped flat buffer allocated via 2MB/1GB Huge Pages (`MAP_HUGETLB` on Linux,
 /// `MEM_LARGE_PAGES` on Windows) for zero MMU TLB-miss latency, with automatic fallback.
 #[derive(Debug)]
-pub struct HugePageBuffer<T> {
-    ptr: *mut T,
-    len: usize,
-    capacity_bytes: usize,
-    is_huge_page: bool,
+pub enum HugePageBuffer<T> {
+    HugePage {
+        ptr: *mut T,
+        len: usize,
+        capacity_bytes: usize,
+    },
+    Heap(Vec<T>),
 }
 
 unsafe impl<T: Send> Send for HugePageBuffer<T> {}
@@ -46,18 +48,11 @@ impl<T> HugePageBuffer<T> {
     pub fn from_vec(src: Vec<T>) -> Self {
         let len = src.len();
         if len == 0 {
-            return Self {
-                ptr: std::ptr::NonNull::dangling().as_ptr(),
-                len: 0,
-                capacity_bytes: 0,
-                is_huge_page: false,
-            };
+            return Self::Heap(src);
         }
 
         let elem_size = std::mem::size_of::<T>();
         let byte_size = len * elem_size;
-        let mut is_huge = false;
-        let mut ptr = std::ptr::null_mut();
 
         #[cfg(target_os = "linux")]
         {
@@ -72,45 +67,33 @@ impl<T> HugePageBuffer<T> {
                     0,
                 );
                 if m_ptr != MAP_FAILED {
-                    ptr = m_ptr as *mut T;
-                    is_huge = true;
+                    let ptr = m_ptr as *mut T;
+                    std::ptr::copy_nonoverlapping(src.as_ptr(), ptr, len);
+                    return Self::HugePage {
+                        ptr,
+                        len,
+                        capacity_bytes: byte_size,
+                    };
                 }
             }
         }
 
-        if ptr.is_null() {
-            // Fallback: allocate page-aligned memory
-            let layout = std::alloc::Layout::array::<T>(len)
-                .unwrap()
-                .align_to(4096)
-                .unwrap();
-            ptr = unsafe { std::alloc::alloc_zeroed(layout) as *mut T };
-        }
-
-        assert!(!ptr.is_null(), "HugePageBuffer allocation failed");
-
-        unsafe {
-            std::ptr::copy_nonoverlapping(src.as_ptr(), ptr, len);
-        }
-
-        Self {
-            ptr,
-            len,
-            capacity_bytes: byte_size,
-            is_huge_page: is_huge,
-        }
+        Self::Heap(src)
     }
 
     pub fn is_huge_page(&self) -> bool {
-        self.is_huge_page
+        matches!(self, Self::HugePage { .. })
     }
 
     pub fn len(&self) -> usize {
-        self.len
+        match self {
+            Self::HugePage { len, .. } => *len,
+            Self::Heap(vec) => vec.len(),
+        }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.len == 0
+        self.len() == 0
     }
 }
 
@@ -118,10 +101,9 @@ impl<T> std::ops::Deref for HugePageBuffer<T> {
     type Target = [T];
     #[inline(always)]
     fn deref(&self) -> &[T] {
-        if self.len == 0 {
-            &[]
-        } else {
-            unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
+        match self {
+            Self::HugePage { ptr, len, .. } => unsafe { std::slice::from_raw_parts(*ptr, *len) },
+            Self::Heap(vec) => vec.as_slice(),
         }
     }
 }
@@ -129,29 +111,19 @@ impl<T> std::ops::Deref for HugePageBuffer<T> {
 impl<T> std::ops::DerefMut for HugePageBuffer<T> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut [T] {
-        if self.len == 0 {
-            &mut []
-        } else {
-            unsafe { std::slice::from_raw_parts_mut(self.ptr, self.len) }
+        match self {
+            Self::HugePage { ptr, len, .. } => unsafe { std::slice::from_raw_parts_mut(*ptr, *len) },
+            Self::Heap(vec) => vec.as_mut_slice(),
         }
     }
 }
 
 impl<T> Drop for HugePageBuffer<T> {
     fn drop(&mut self) {
-        if self.capacity_bytes == 0 { return; }
-        if self.is_huge_page {
+        if let Self::HugePage { ptr, capacity_bytes, .. } = self {
             #[cfg(target_os = "linux")]
             unsafe {
-                libc::munmap(self.ptr as *mut libc::c_void, self.capacity_bytes);
-            }
-        } else {
-            let layout = std::alloc::Layout::array::<T>(self.len.max(1))
-                .unwrap()
-                .align_to(4096)
-                .unwrap();
-            unsafe {
-                std::alloc::dealloc(self.ptr as *mut u8, layout);
+                libc::munmap(*ptr as *mut libc::c_void, *capacity_bytes);
             }
         }
     }
