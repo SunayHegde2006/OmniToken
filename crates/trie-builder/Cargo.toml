@@ -10,3 +10,6 @@ repository.workspace = true
 [dependencies]
 vocab-ir = { path = "../vocab-ir" }
 anyhow.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc.workspace = true

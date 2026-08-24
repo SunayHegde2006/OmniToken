@@ -625,6 +625,7 @@ name = "trie-builder"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "libc",
  "vocab-ir",
 ]
 
