@@ -142,6 +142,71 @@ pub fn load_hf(json: &str) -> Result<VocabIr> {
     Ok(ir)
 }
 
+/// Load HuggingFace `tokenizers.json` file using high-performance kernel-bypass I/O (`io_uring`).
+pub fn load_hf_file<P: AsRef<std::path::Path>>(path: P) -> Result<VocabIr> {
+    let bytes = read_file_fast(path)?;
+    let json_str = std::str::from_utf8(&bytes).context("vocab file is not valid UTF-8")?;
+    load_hf(json_str)
+}
+
+// ─── High-performance Kernel-Bypass File I/O ─────────────────────────────────
+
+/// Fast file loader utilizing Linux `io_uring` kernel bypass for asynchronous
+/// zero-copy submission, with automatic fallback to standard I/O if unsupported
+/// or on non-Linux operating systems.
+pub fn read_file_fast<P: AsRef<std::path::Path>>(path: P) -> Result<Vec<u8>> {
+    let path = path.as_ref();
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(bytes) = read_file_io_uring(path) {
+            return Ok(bytes);
+        }
+    }
+    std::fs::read(path).with_context(|| format!("failed to read file `{}`", path.display()))
+}
+
+#[cfg(target_os = "linux")]
+fn read_file_io_uring(path: &std::path::Path) -> Result<Vec<u8>> {
+    use io_uring::{opcode, types, IoUring};
+    use std::fs::File;
+    use std::os::unix::io::AsRawFd;
+
+    let file = File::open(path).with_context(|| format!("open file `{}`", path.display()))?;
+    let metadata = file.metadata()?;
+    let size = metadata.len() as usize;
+    if size == 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut buf = vec![0u8; size];
+    let fd = types::Fd(file.as_raw_fd());
+
+    let mut ring = IoUring::new(8).context("setup io_uring ring")?;
+    let read_e = opcode::Read::new(fd, buf.as_mut_ptr(), size.min(u32::MAX as usize) as u32)
+        .build()
+        .user_data(0x01);
+
+    unsafe {
+        ring.submission()
+            .push(&read_e)
+            .map_err(|_| anyhow::anyhow!("io_uring submission queue full"))?;
+    }
+
+    ring.submit_and_wait(1).context("io_uring submit_and_wait")?;
+
+    let cqe = ring.completion()
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("io_uring completion queue empty"))?;
+
+    if cqe.result() < 0 {
+        bail!("io_uring read error code {}", cqe.result());
+    }
+
+    let bytes_read = cqe.result() as usize;
+    buf.truncate(bytes_read);
+    Ok(buf)
+}
+
 // ─── SentencePiece TSV / JSON Loader ──────────────────────────────────────────
 
 #[derive(Deserialize)]
@@ -462,5 +527,28 @@ mod tests {
     fn b64_decode_roundtrip() {
         assert_eq!(b64_decode("aGVsbG8=").unwrap(), b"hello");
         assert_eq!(b64_decode("aGVsbG8").unwrap(), b"hello");
+    }
+
+    #[test]
+    fn test_read_file_fast_and_load_hf_file() {
+        let temp_dir = std::env::temp_dir();
+        let file_path = temp_dir.join("test_vocab_io_uring.json");
+        let content = r#"{
+            "model": {
+                "type": "BPE",
+                "vocab": {"a": 0, "b": 1, "ab": 2},
+                "merges": ["a b"]
+            }
+        }"#;
+        std::fs::write(&file_path, content).unwrap();
+
+        let read_bytes = read_file_fast(&file_path).unwrap();
+        assert_eq!(read_bytes, content.as_bytes());
+
+        let ir = load_hf_file(&file_path).unwrap();
+        assert_eq!(ir.algo, AlgoKind::Bpe);
+        assert_eq!(ir.vocab["ab"], 2);
+
+        let _ = std::fs::remove_file(file_path);
     }
 }

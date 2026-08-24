@@ -24,9 +24,7 @@ pub struct PyTokenizer {
 impl PyTokenizer {
     #[new]
     pub fn new(vocab_json_path: &str) -> PyResult<Self> {
-        let content = std::fs::read_to_string(vocab_json_path)
-            .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
-        let ir = vocab_ir::load_hf(&content)
+        let ir = vocab_ir::load_hf_file(vocab_json_path)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         let trie = trie_builder::build(&ir)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;

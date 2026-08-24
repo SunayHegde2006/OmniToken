@@ -44,8 +44,7 @@ struct Cli {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let json = std::fs::read_to_string(&cli.vocab)?;
-    let ir   = vocab_ir::load_hf(&json)?;
+    let ir   = vocab_ir::load_hf_file(&cli.vocab)?;
     let merge_rank: HashMap<(String, String), u32> = walker::build_merge_rank(&ir);
 
     if cli.parity {

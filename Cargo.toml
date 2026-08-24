@@ -36,6 +36,8 @@ xxhash-rust = { version = "0.8", features = ["xxh3"] }
 # mimalloc: faster small-allocation allocator (Section 4.6)
 mimalloc = { version = "0.1", default-features = false }
 parking_lot = "0.12"
+# io-uring: Linux kernel-bypass asynchronous file I/O for vocabulary loading
+io-uring = "0.6"
 pyo3 = { version = "0.22", features = ["extension-module"] }
 
 # ── Release build configuration (Section 4.6) ──────────────────────────────

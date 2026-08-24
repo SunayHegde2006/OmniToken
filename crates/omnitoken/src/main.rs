@@ -42,8 +42,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.cmd {
         Cmd::Encode { vocab } => {
-            let json = std::fs::read_to_string(&vocab)?;
-            let ir   = vocab_ir::load_hf(&json)?;
+            let ir   = vocab_ir::load_hf_file(&vocab)?;
             let mr   = walker::build_merge_rank(&ir);
             let mut cache = hot_cache::HotCache::new();
 
