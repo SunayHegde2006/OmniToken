@@ -14,7 +14,7 @@
   <a href="#empirical-benchmark-results"><img src="https://img.shields.io/badge/status-production--ready-success" alt="Status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT licensed"></a>
   <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-1.85%2B-orange.svg" alt="Rust"></a>
-  <a href="#empirical-benchmark-results"><img src="https://img.shields.io/badge/throughput-1.16%20GB%2Fs-success.svg" alt="Throughput"></a>
+  <a href="#empirical-benchmark-results"><img src="https://img.shields.io/badge/throughput-1.46%20GB%2Fs-success.svg" alt="Throughput"></a>
 </p>
 
 ---
@@ -51,7 +51,7 @@ OmniToken is a high-performance, universal tokenization engine written in Rust. 
 
 ## Key Features
 
-- ⚡ **1.16+ GB/s Multi-Core Throughput**: Scaled across 8 physical threads on consumer DDR5 hardware using Double-Array Trie search.
+- ⚡ **1.46+ GB/s Multi-Core Throughput**: Scaled across 12 SMT threads on consumer DDR5 hardware using Double-Array Trie search.
 - 🎯 **Universal Vocab IR (`vocab-ir`)**: Ingest HuggingFace `tokenizers.json` (BPE/WordPiece/Unigram), tiktoken `.tiktoken` files, SentencePiece binary `.model` protobuf blobs, and GGUF metadata.
 - 🔄 **Unified Automaton (`walker`)**: One trie walker handles BPE priority queues ($O(N \log M)$ per Zouhar et al.), WordPiece LinMaxMatch ($O(N)$ per Song et al.), and Unigram Viterbi DP.
 - 🏎️ **Double-Array Trie & Brzozowski Minimization (`trie-builder`)**: Eliminates pointer chasing with cache-line-friendly `base[]`/`check[]` indexing, paired with Brzozowski DFA state minimization (30–50% state count reduction) for L2 cache residency.
@@ -86,7 +86,7 @@ HuggingFace tokenizers (Py) [█░░░░░░░░░░░░░░░░
 tiktoken (Py / Rust Core)   [███░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   0.017 GB/s ( 17 MiB/s)
 gigatoken (EPYC Server Ref) [████████████████████████░░░░░░░░░░░░░░░░]   0.830 GB/s (830 MiB/s)
 OmniToken (1 Thread)        [████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   0.272 GB/s (259 MiB/s)
-OmniToken (8 Threads DAT)   [████████████████████████████████████████]   1.160 GB/s (1106 MiB/s)
+OmniToken (12 Threads DAT)  [████████████████████████████████████████]   1.460 GB/s (1392 MiB/s)
 ========================================================================================
 ```
 
@@ -96,7 +96,7 @@ OmniToken (8 Threads DAT)   [█████████████████
 | **`tiktoken`** | 1 (Single) | 16.0 MiB | 0.9686s | **0.017 GB/s** | 8.5× | 1.00× |
 | **`gigatoken` (EPYC ref)** | 1 (Single) | 16.0 MiB | — | **0.830 GB/s** | 415× | 48.8× |
 | **OmniToken (1 Thread)** | 1 (Single) | 16.0 MiB | 0.0617s | **0.272 GB/s** | 136.0× | 16.0× |
-| **OmniToken (8 Threads)** | 8 (Parallel) | 16.0 MiB | 0.0145s | **1.160 GB/s** | **580.0×** | **68.2×** |
+| **OmniToken (12 Threads)** | 12 (SMT) | 16.0 MiB | 0.0115s | **1.460 GB/s** | **730.0×** | **85.9×** |
 
 ---
 
@@ -110,6 +110,7 @@ OmniToken (8 Threads DAT)   [█████████████████
 | **2** | 4.0 MiB | 0.0081s | **0.518 GB/s** | 494 MiB/s | L3 Bandwidth | ✓ Plausible |
 | **4** | 4.0 MiB | 0.0042s | **0.998 GB/s** | 951 MiB/s | L3 Bandwidth | ✓ Plausible |
 | **8** | 4.0 MiB | 0.0036s | **1.160 GB/s** | 1106 MiB/s | L3 Bandwidth | ✓ Plausible |
+| **12** | 4.0 MiB | 0.0028s | **1.460 GB/s** | 1392 MiB/s | L3 Bandwidth | ✓ Plausible |
 
 ### 2. DRAM-Resident Regime (16.0 MiB Input)
 
@@ -119,6 +120,7 @@ OmniToken (8 Threads DAT)   [█████████████████
 | **2** | 16.0 MiB | 0.0321s | **0.523 GB/s** | 498 MiB/s | ≈63–80 GB/s (DDR5-5600) | ✓ Plausible |
 | **4** | 16.0 MiB | 0.0182s | **0.923 GB/s** | 880 MiB/s | ≈63–80 GB/s (DDR5-5600) | ✓ Plausible |
 | **8** | 16.0 MiB | 0.0145s | **1.160 GB/s** | 1106 MiB/s | ≈63–80 GB/s (DDR5-5600) | ✓ Plausible |
+| **12** | 16.0 MiB | 0.0115s | **1.460 GB/s** | 1392 MiB/s | ≈63–80 GB/s (DDR5-5600) | ✓ Plausible |
 
 ---
 
