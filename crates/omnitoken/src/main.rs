@@ -7,9 +7,9 @@
 //! On Windows the default allocator is not optimised for the small, high-frequency
 //! allocations typical of tokenizer hot paths; mimalloc is a measurable, low-risk win.
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 use mimalloc::MiMalloc;
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "linux")]
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
