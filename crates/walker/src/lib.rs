@@ -73,7 +73,7 @@ pub fn wordpiece_encode(word: &str, trie: &Trie, unk_id: Option<u32>) -> Result<
         while start < cur_end {
             let prefix = if start > 0 { &trie.cont_prefix[..] } else { &[] };
             if let Some(node_id) = trie.find_subword(prefix, &word_bytes[start..cur_end]) {
-                if let Some(tok_id) = trie.nodes[node_id as usize].output {
+                if let Some(tok_id) = trie.output[node_id as usize] {
                     matched_id = Some(tok_id);
                     break;
                 }
