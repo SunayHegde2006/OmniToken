@@ -17,11 +17,12 @@ name = "omnitoken"
 path = "src/main.rs"
 
 [dependencies]
+omnitoken-core = { path = "../omnitoken-core" }
 vocab-ir     = { path = "../vocab-ir" }
 trie-builder = { path = "../trie-builder" }
 pretokenizer = { path = "../pretokenizer" }
 walker       = { path = "../walker" }
-hot-cache    = { path = "../hot-cache" }
+hashbrown.workspace = true
 clap.workspace    = true
 anyhow.workspace  = true
 rayon.workspace   = true

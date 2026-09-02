@@ -12,5 +12,3 @@ serde.workspace      = true
 serde_json.workspace = true
 anyhow.workspace     = true
 
-[target.'cfg(target_os = "linux")'.dependencies]
-io-uring.workspace = true

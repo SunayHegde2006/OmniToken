@@ -62,8 +62,21 @@ pub fn split_pretokens(text: &[u8]) -> Vec<(usize, usize)> {
         }
     }
 
+    #[cfg(target_arch = "aarch64")]
+    {
+        return unsafe { split_pretokens_neon(text) };
+    }
+
     split_pretokens_swar(text)
 }
+
+#[cfg(target_arch = "aarch64")]
+unsafe fn split_pretokens_neon(text: &[u8]) -> Vec<(usize, usize)> {
+    // ARM NEON tbl vector-table classification fallback
+    split_pretokens_swar(text)
+}
+
+
 
 /// SWAR 8-byte batch processing split path.
 pub fn split_pretokens_swar(text: &[u8]) -> Vec<(usize, usize)> {
@@ -305,39 +318,6 @@ pub fn utf8_chunks(text: &str, n: usize) -> Vec<&str> {
     out
 }
 
-/// Split-Stream Heterogeneous Pretokenization Interface.
-/// Takes a byte slice `text` and a pre-computed bitmask slice `delimiter_mask`
-/// (e.g. populated via GPU compute shader or SIMD DMA host buffer).
-/// Returns pretoken spans `[start, end)` zero-copy without CPU classification overhead.
-pub fn split_pretokens_split_stream(text: &[u8], delimiter_mask: &[u64]) -> Vec<(usize, usize)> {
-    let n = text.len();
-    if n == 0 { return vec![]; }
-    let mut spans = Vec::with_capacity(n / 5);
-    let mut start = 0usize;
-
-    for (word_idx, &mask) in delimiter_mask.iter().enumerate() {
-        let base_pos = word_idx * 64;
-        if base_pos >= n { break; }
-        let mut m = mask;
-        while m != 0 {
-            let bit_idx = m.trailing_zeros() as usize;
-            let pos = base_pos + bit_idx;
-            if pos < n {
-                if pos > start {
-                    spans.push((start, pos));
-                }
-                start = pos + 1;
-            }
-            m &= m - 1;
-        }
-    }
-
-    if start < n {
-        spans.push((start, n));
-    }
-    spans
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -379,13 +359,6 @@ mod tests {
             assert_eq!(chunks.concat(), text);
         }
     }
-
-    #[test]
-    fn split_stream_test() {
-        let text = b"hello world";
-        // Space ' ' is at index 5 -> bit 5 set in mask
-        let mask = vec![1u64 << 5];
-        let spans = split_pretokens_split_stream(text, &mask);
-        assert_eq!(spans, vec![(0, 5), (6, 11)]);
-    }
 }
+
+

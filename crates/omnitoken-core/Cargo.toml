@@ -1,0 +1,8 @@
+[package]
+name        = "omnitoken-core"
+description = "OmniToken portable core — types, error, sink trait, and hardware capability detection."
+version.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+authors.workspace    = true
+repository.workspace = true

@@ -1,17 +1,17 @@
 [workspace]
 members = [
+    "crates/omnitoken-core",
     "crates/vocab-ir",
     "crates/trie-builder",
     "crates/pretokenizer",
     "crates/walker",
-    "crates/hot-cache",
     "crates/bench-harness",
     "crates/omnitoken",
 ]
 resolver = "2"
 
 [workspace.package]
-version    = "0.3.0"
+version    = "1.0.0"
 edition    = "2021"
 license    = "MIT"
 authors    = ["OmniToken Contributors"]
@@ -22,6 +22,8 @@ repository = "https://github.com/sunayhegde/Omnitoken"
 priority-queue = "2"
 # SwissTable adaptive hash map (overflow cache + internal lookup)
 hashbrown = "0.14"
+# Zero-copy memory-mapped file I/O for bench and corpus loading
+memmap2 = "0.9"
 # Parallel iteration
 rayon = "1"
 # Error handling
@@ -31,15 +33,11 @@ clap = { version = "4", features = ["derive"] }
 # Serde for vocab JSON loading
 serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
-# XXH3-64 for hot-tier fingerprinting (see plan Section 3 / PtrHash eval)
-xxhash-rust = { version = "0.8", features = ["xxh3"] }
 # mimalloc: faster small-allocation allocator (Section 4.6)
 mimalloc = { version = "0.1", default-features = false }
-parking_lot = "0.12"
-# io-uring: Linux kernel-bypass asynchronous file I/O for vocabulary loading
-io-uring = "0.6"
-libc = "0.2"
+memchr = "2"
 pyo3 = { version = "0.22", features = ["extension-module"] }
+pyo3-numpy = "0.22"
 
 # ── Release build configuration (Section 4.6) ──────────────────────────────
 # target-cpu=native: set via .cargo/config.toml (below) not here, to avoid

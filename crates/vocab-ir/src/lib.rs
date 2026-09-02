@@ -5,14 +5,19 @@
 //! crates only ever see [`VocabIr`].
 
 use std::collections::HashMap;
+use std::path::Path;
 
 use anyhow::{bail, Context, Result};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+
+/// Magic header for OmniToken Compiled (.otk) binary format.
+pub const OTK_MAGIC: &[u8; 4] = b"\x7fOTK";
+pub const OTK_VERSION: u32 = 1;
 
 // ─── Public IR types ─────────────────────────────────────────────────────────
 
 /// Which tokenisation algorithm a vocab belongs to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AlgoKind {
     Bpe,
     WordPiece,
@@ -20,7 +25,7 @@ pub enum AlgoKind {
 }
 
 /// A single BPE merge rule: (left, right) → rank. Lower rank = applied first.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MergeRule {
     pub left:  String,
     pub right: String,
@@ -28,14 +33,14 @@ pub struct MergeRule {
 }
 
 /// A single Unigram/SentencePiece log-probability score.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UnigramScore {
     pub token: String,
     pub score: f32,
 }
 
 /// The canonical IR produced by every format loader.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VocabIr {
     pub algo: AlgoKind,
     /// token string → token id (0-indexed)
@@ -149,62 +154,85 @@ pub fn load_hf_file<P: AsRef<std::path::Path>>(path: P) -> Result<VocabIr> {
     load_hf(json_str)
 }
 
-// ─── High-performance Kernel-Bypass File I/O ─────────────────────────────────
-
-/// Fast file loader utilizing Linux `io_uring` kernel bypass for asynchronous
-/// zero-copy submission, with automatic fallback to standard I/O if unsupported
-/// or on non-Linux operating systems.
+/// Fast file loader utilizing std::fs::read with clear error context.
 pub fn read_file_fast<P: AsRef<std::path::Path>>(path: P) -> Result<Vec<u8>> {
     let path = path.as_ref();
-    #[cfg(target_os = "linux")]
-    {
-        if let Ok(bytes) = read_file_io_uring(path) {
-            return Ok(bytes);
-        }
-    }
     std::fs::read(path).with_context(|| format!("failed to read file `{}`", path.display()))
 }
 
-#[cfg(target_os = "linux")]
-fn read_file_io_uring(path: &std::path::Path) -> Result<Vec<u8>> {
-    use io_uring::{opcode, types, IoUring};
-    use std::fs::File;
-    use std::os::unix::io::AsRawFd;
+// ─── Automatic format detection ───────────────────────────────────────────────
 
-    let file = File::open(path).with_context(|| format!("open file `{}`", path.display()))?;
-    let metadata = file.metadata()?;
-    let size = metadata.len() as usize;
-    if size == 0 {
-        return Ok(Vec::new());
+/// Vocabulary source format, detected from file magic bytes or extension.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VocabKind {
+    /// OmniToken compiled binary (b"\x7fOTK").
+    OmniBinaryCache,
+    /// HuggingFace tokenizers.json (starts with `{"`).
+    HuggingFaceJson,
+    /// tiktoken base64 BPE lines.
+    TikToken,
+    /// SentencePiece exported JSON array.
+    SentencePieceJson,
+    /// GGUF binary model (b"GGUF").
+    Gguf,
+    /// Unknown format.
+    Unknown,
+}
+
+/// Detect vocabulary format from the first bytes of the file contents.
+///
+/// Rules (applied in priority order):
+/// - Starts with `b"\x7fOTK"`  → `OmniBinaryCache`
+/// - Starts with `b"GGUF"`     → `Gguf`
+/// - Starts with `b"[{"` or `b"[\""`  → `SentencePieceJson`
+/// - Starts with `b"{\""` or `b"{ "` → `HuggingFaceJson`
+/// - Otherwise looks like `<base64> <base64>` BPE pairs → `TikToken`
+pub fn detect_vocab_kind(bytes: &[u8]) -> VocabKind {
+    if bytes.starts_with(OTK_MAGIC) { return VocabKind::OmniBinaryCache; }
+    if bytes.starts_with(b"GGUF")   { return VocabKind::Gguf; }
+    // SentencePiece JSON is a top-level JSON array
+    if bytes.starts_with(b"[{") || bytes.starts_with(b"[\"") {
+        return VocabKind::SentencePieceJson;
     }
-
-    let mut buf = vec![0u8; size];
-    let fd = types::Fd(file.as_raw_fd());
-
-    let mut ring = IoUring::new(8).context("setup io_uring ring")?;
-    let read_e = opcode::Read::new(fd, buf.as_mut_ptr(), size.min(u32::MAX as usize) as u32)
-        .build()
-        .user_data(0x01);
-
-    unsafe {
-        ring.submission()
-            .push(&read_e)
-            .map_err(|_| anyhow::anyhow!("io_uring submission queue full"))?;
+    if bytes.starts_with(b"{\"") || bytes.starts_with(b"{ ") || bytes.starts_with(b"{\n") {
+        return VocabKind::HuggingFaceJson;
     }
-
-    ring.submit_and_wait(1).context("io_uring submit_and_wait")?;
-
-    let cqe = ring.completion()
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("io_uring completion queue empty"))?;
-
-    if cqe.result() < 0 {
-        bail!("io_uring read error code {}", cqe.result());
+    // tiktoken: lines look like "BASE64TOKEN DECIMAL_RANK\n"
+    // Heuristic: first line is non-empty and contains exactly one space
+    if let Some(nl) = bytes.iter().position(|&b| b == b'\n') {
+        let line = &bytes[..nl];
+        let spaces: usize = line.iter().filter(|&&b| b == b' ').count();
+        if spaces == 1 { return VocabKind::TikToken; }
     }
+    VocabKind::Unknown
+}
 
-    let bytes_read = cqe.result() as usize;
-    buf.truncate(bytes_read);
-    Ok(buf)
+/// Universal auto-loading entry point.
+///
+/// Reads the file, detects its format, and delegates to the appropriate loader.
+/// On detection failure, tries HuggingFace JSON as last resort.
+pub fn load_auto<P: AsRef<std::path::Path>>(path: P) -> Result<VocabIr> {
+    let path = path.as_ref();
+    let bytes = read_file_fast(path)?;
+    match detect_vocab_kind(&bytes) {
+        VocabKind::OmniBinaryCache  => load_otk_bytes(&bytes),
+        VocabKind::HuggingFaceJson  => load_hf(std::str::from_utf8(&bytes).context("UTF-8")?),
+        VocabKind::SentencePieceJson => {
+            let json = std::str::from_utf8(&bytes).context("UTF-8")?;
+            load_sentencepiece_json(json)
+        }
+        VocabKind::TikToken => {
+            let text = std::str::from_utf8(&bytes).context("UTF-8")?;
+            load_tiktoken(text)
+        }
+        VocabKind::Gguf | VocabKind::Unknown => {
+            // Fall back to HuggingFace JSON — surface a clear error if it fails
+            anyhow::bail!(
+                "unrecognised vocabulary format in `{}`; pass an explicit loader or provide a HuggingFace tokenizers.json",
+                path.display()
+            )
+        }
+    }
 }
 
 // ─── SentencePiece TSV / JSON Loader ──────────────────────────────────────────
@@ -283,7 +311,6 @@ pub fn load_gguf_vocab(json: &str) -> Result<VocabIr> {
 /// Load a tiktoken `.tiktoken` file (lines: `<base64-token> <rank>`).
 pub fn load_tiktoken(content: &str) -> Result<VocabIr> {
     let mut vocab = HashMap::new();
-    let mut entries = Vec::new();
 
     for (lineno, line) in content.lines().enumerate() {
         let line = line.trim();
@@ -298,17 +325,13 @@ pub fn load_tiktoken(content: &str) -> Result<VocabIr> {
         let bytes = b64_decode(b64)
             .with_context(|| format!("bad base64 on line {lineno}"))?;
         let token = String::from_utf8_lossy(&bytes).into_owned();
-        vocab.insert(token.clone(), rank);
-        entries.push((rank, token));
+        vocab.insert(token, rank);
     }
-
-    entries.sort_by_key(|(rank, _)| *rank);
-    let merge_rules = Vec::new();
 
     let ir = VocabIr {
         algo: AlgoKind::Bpe,
         vocab,
-        merge_rules,
+        merge_rules: vec![],
         unigram_scores: vec![],
         continuation_prefix: None,
     };
@@ -438,53 +461,85 @@ fn read_varint(bytes: &[u8], mut cursor: usize) -> Result<(u64, usize)> {
 // ─── Base64 decoder supporting both RFC 4648 standard and URL-safe ─────────────
 
 fn b64_decode(s: &str) -> Result<Vec<u8>> {
-    const T: [i8; 128] = {
-        let mut t = [-1i8; 128];
-        let mut i = 0u8;
-        while i < 26 { t[(b'A' + i) as usize] = i as i8;      i += 1; }
-        i = 0;
-        while i < 26 { t[(b'a' + i) as usize] = (26+i) as i8; i += 1; }
-        i = 0;
-        while i < 10 { t[(b'0' + i) as usize] = (52+i) as i8; i += 1; }
-        t[b'+' as usize] = 62; t[b'-' as usize] = 62;
-        t[b'/' as usize] = 63; t[b'_' as usize] = 63;
-        t
+    let val = |b: u8| -> Result<u32> {
+        match b {
+            b'A'..=b'Z' => Ok((b - b'A') as u32),
+            b'a'..=b'z' => Ok((b - b'a' + 26) as u32),
+            b'0'..=b'9' => Ok((b - b'0' + 52) as u32),
+            b'+' | b'-' => Ok(62),
+            b'/' | b'_' => Ok(63),
+            _ => bail!("invalid base64 char"),
+        }
     };
 
     let s = s.trim_end_matches('=');
-    let mut out = Vec::with_capacity(s.len() * 3 / 4 + 2);
     let bs = s.as_bytes();
+    let mut out = Vec::with_capacity(bs.len() * 3 / 4 + 2);
     let mut i = 0;
     while i < bs.len() {
-        let get = |b: u8| -> Result<u32> {
-            if b > 127 { bail!("non-ASCII byte in base64"); }
-            let v = T[b as usize];
-            if v < 0 { bail!("invalid base64 char: {}", b as char); }
-            Ok(v as u32)
-        };
-        let a = get(bs[i])?;
+        let a = val(bs[i])?;
         if i + 1 >= bs.len() { break; }
-        let b = get(bs[i+1])?;
+        let b = val(bs[i + 1])?;
         let v2 = (a << 6) | b;
         if i + 2 < bs.len() {
-            let c = get(bs[i+2])?;
+            let c = val(bs[i + 2])?;
             let v3 = (v2 << 6) | c;
             if i + 3 < bs.len() {
-                let d = get(bs[i+3])?;
+                let d = val(bs[i + 3])?;
                 let v4 = (v3 << 6) | d;
                 out.push(((v4 >> 16) & 0xFF) as u8);
-                out.push(((v4 >>  8) & 0xFF) as u8);
-                out.push(( v4        & 0xFF) as u8);
-                i += 4; continue;
+                out.push(((v4 >> 8) & 0xFF) as u8);
+                out.push((v4 & 0xFF) as u8);
+                i += 4;
+                continue;
             }
             out.push(((v3 >> 10) & 0xFF) as u8);
-            out.push(((v3 >>  2) & 0xFF) as u8);
-            i += 3; continue;
+            out.push(((v3 >> 2) & 0xFF) as u8);
+            i += 3;
+            continue;
         }
         out.push(((v2 >> 4) & 0xFF) as u8);
         i += 2;
     }
     Ok(out)
+}
+
+// ─── OmniToken Compiled (.otk) Binary Format ──────────────────────────────────
+
+impl VocabIr {
+    /// Save `VocabIr` as a zero-copy `.otk` binary blob.
+    pub fn save_otk<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+        let path = path.as_ref();
+        let payload = serde_json::to_vec(self).context("serialize VocabIr to OTK payload")?;
+        let mut bytes = Vec::with_capacity(8 + payload.len());
+        bytes.extend_from_slice(OTK_MAGIC);
+        bytes.extend_from_slice(&OTK_VERSION.to_le_bytes());
+        bytes.extend_from_slice(&payload);
+        std::fs::write(path, bytes).with_context(|| format!("failed to write OTK file `{}`", path.display()))
+    }
+}
+
+/// Load `VocabIr` from an `.otk` binary buffer.
+pub fn load_otk_bytes(bytes: &[u8]) -> Result<VocabIr> {
+    if bytes.len() < 8 {
+        bail!("invalid .otk binary format: buffer too short (< 8 bytes)");
+    }
+    if &bytes[0..4] != OTK_MAGIC {
+        bail!("invalid .otk binary format: bad magic header {:?}", &bytes[0..4]);
+    }
+    let version = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+    if version != OTK_VERSION {
+        bail!("unsupported .otk version {version}, expected {OTK_VERSION}");
+    }
+    let ir: VocabIr = serde_json::from_slice(&bytes[8..]).context("deserialize OTK payload")?;
+    ir.validate()?;
+    Ok(ir)
+}
+
+/// Load `.otk` binary file.
+pub fn load_otk_file<P: AsRef<Path>>(path: P) -> Result<VocabIr> {
+    let bytes = read_file_fast(path)?;
+    load_otk_bytes(&bytes)
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -550,5 +605,24 @@ mod tests {
         assert_eq!(ir.vocab["ab"], 2);
 
         let _ = std::fs::remove_file(file_path);
+    }
+
+    #[test]
+    fn test_otk_roundtrip() {
+        let temp_dir = std::env::temp_dir();
+        let otk_path = temp_dir.join("test_vocab.otk");
+        let ir = load_hf(r#"{
+            "model": {
+                "type": "BPE",
+                "vocab": {"x": 0, "y": 1, "xy": 2},
+                "merges": ["x y"]
+            }
+        }"#).unwrap();
+
+        ir.save_otk(&otk_path).unwrap();
+        let loaded_ir = load_otk_file(&otk_path).unwrap();
+        assert_eq!(loaded_ir.algo, AlgoKind::Bpe);
+        assert_eq!(loaded_ir.vocab["xy"], 2);
+        let _ = std::fs::remove_file(otk_path);
     }
 }

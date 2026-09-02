@@ -27,106 +27,7 @@ use vocab_ir::{AlgoKind, VocabIr};
 pub type NodeId = u32;
 pub const ROOT: NodeId = 0;
 
-// ─── Huge-Page Memory Allocator ──────────────────────────────────────────────
-
-/// Memory-mapped flat buffer allocated via 2MB/1GB Huge Pages (`MAP_HUGETLB` on Linux,
-/// `MEM_LARGE_PAGES` on Windows) for zero MMU TLB-miss latency, with automatic fallback.
-#[derive(Debug)]
-pub enum HugePageBuffer<T> {
-    HugePage {
-        ptr: *mut T,
-        len: usize,
-        capacity_bytes: usize,
-    },
-    Heap(Vec<T>),
-}
-
-unsafe impl<T: Send> Send for HugePageBuffer<T> {}
-unsafe impl<T: Sync> Sync for HugePageBuffer<T> {}
-
-impl<T> HugePageBuffer<T> {
-    pub fn from_vec(src: Vec<T>) -> Self {
-        let len = src.len();
-        if len == 0 {
-            return Self::Heap(src);
-        }
-
-        #[cfg(target_os = "linux")]
-        {
-            let elem_size = std::mem::size_of::<T>();
-            let byte_size = len * elem_size;
-            use libc::{mmap, MAP_ANONYMOUS, MAP_FAILED, MAP_HUGETLB, MAP_PRIVATE, PROT_READ, PROT_WRITE};
-            unsafe {
-                let m_ptr = mmap(
-                    std::ptr::null_mut(),
-                    byte_size,
-                    PROT_READ | PROT_WRITE,
-                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB,
-                    -1,
-                    0,
-                );
-                if m_ptr != MAP_FAILED {
-                    let ptr = m_ptr as *mut T;
-                    std::ptr::copy_nonoverlapping(src.as_ptr(), ptr, len);
-                    return Self::HugePage {
-                        ptr,
-                        len,
-                        capacity_bytes: byte_size,
-                    };
-                }
-            }
-        }
-
-        Self::Heap(src)
-    }
-
-    pub fn is_huge_page(&self) -> bool {
-        matches!(self, Self::HugePage { .. })
-    }
-
-    pub fn len(&self) -> usize {
-        match self {
-            Self::HugePage { len, .. } => *len,
-            Self::Heap(vec) => vec.len(),
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-}
-
-impl<T> std::ops::Deref for HugePageBuffer<T> {
-    type Target = [T];
-    #[inline(always)]
-    fn deref(&self) -> &[T] {
-        match self {
-            Self::HugePage { ptr, len, .. } => unsafe { std::slice::from_raw_parts(*ptr, *len) },
-            Self::Heap(vec) => vec.as_slice(),
-        }
-    }
-}
-
-impl<T> std::ops::DerefMut for HugePageBuffer<T> {
-    #[inline(always)]
-    fn deref_mut(&mut self) -> &mut [T] {
-        match self {
-            Self::HugePage { ptr, len, .. } => unsafe { std::slice::from_raw_parts_mut(*ptr, *len) },
-            Self::Heap(vec) => vec.as_mut_slice(),
-        }
-    }
-}
-
-impl<T> Drop for HugePageBuffer<T> {
-    fn drop(&mut self) {
-        #[cfg(target_os = "linux")]
-        if let Self::HugePage { ptr, capacity_bytes, .. } = self {
-            unsafe {
-                libc::munmap(*ptr as *mut libc::c_void, *capacity_bytes);
-            }
-        }
-    }
-}
+// ─── Build-time Node ─────────────────────────────────────────────────────────
 
 /// Build-time node — HashMap-based, not part of the public API.
 #[derive(Default, Clone)]
@@ -152,10 +53,10 @@ struct TrieNode {
 /// All per-state metadata (output token id, AC links, BPE/Unigram scores)
 /// live in parallel flat arrays indexed by the same state/position integer.
 pub struct Trie {
-    /// `base[state]` — child offset allocated on Huge Pages for zero MMU TLB misses.
-    pub base: HugePageBuffer<i32>,
-    /// `check[pos]` — parent state allocated on Huge Pages for zero MMU TLB misses.
-    pub check: HugePageBuffer<i32>,
+    /// `base[state]` — child offset allocated in contiguous array.
+    pub base: Vec<i32>,
+    /// `check[pos]` — parent state allocated in contiguous array.
+    pub check: Vec<i32>,
     /// Token id when this state terminates a vocabulary entry.
     pub output: Vec<Option<u32>>,
     /// Aho-Corasick failure link: longest proper suffix that is a trie prefix.
@@ -183,6 +84,45 @@ impl Trie {
         } else {
             None
         }
+    }
+
+    /// Branchless DAT transition for the release hot path.
+    ///
+    /// Uses a bitmask select instead of a branch: if the transition is valid,
+    /// returns `candidate`; otherwise returns `fail[state]` — both in one cmov.
+    ///
+    /// # Safety
+    /// The DAT arrays must be padded so that `base[s] + 255 < check.len()` for
+    /// every valid state `s`.  [`build`] guarantees this after compilation.
+    #[inline(always)]
+    pub fn transition_release(&self, state: u32, byte: u8) -> u32 {
+        // SAFETY: caller guarantees DAT padding invariant.
+        unsafe {
+            let base_val = *self.base.get_unchecked(state as usize);
+            let candidate = base_val.wrapping_add(byte as i32) as u32;
+            let check_val = *self.check.get_unchecked(candidate as usize);
+            // branchless select: if check[candidate] == state → candidate, else fail[state]
+            let ok  = (check_val == state as i32) as u32;
+            let mask = ok.wrapping_neg(); // 0xFFFF_FFFF if ok, 0 if not
+            let fallback = *self.fail.get_unchecked(state as usize);
+            (candidate & mask) | (fallback & !mask)
+        }
+    }
+
+    /// Walk the trie from root for `bytes` using unchecked array indexing.
+    /// Returns the terminal state id if the full string matches, else `None`.
+    #[inline(always)]
+    pub fn find_node_fast(&self, bytes: &[u8]) -> Option<NodeId> {
+        let mut cur = ROOT;
+        for &b in bytes {
+            let pos = (unsafe { *self.base.get_unchecked(cur as usize) } as usize).wrapping_add(b as usize);
+            if pos < self.check.len() && unsafe { *self.check.get_unchecked(pos) } == cur as i32 {
+                cur = pos as u32;
+            } else {
+                return None;
+            }
+        }
+        Some(cur)
     }
 
     /// Walk the trie from root for `bytes`.
@@ -534,19 +474,19 @@ fn compile_to_dat(nodes: Vec<TrieNode>, algo: AlgoKind, cont_prefix: Vec<u8>) ->
         fpo_a[new_u]  = old_to_new[nodes[old_u].fail_pop as usize];
     }
 
-    // Truncate to exactly what was used.
-    let final_size = max_state + 1;
-    base_a.truncate(final_size);
-    check_a.truncate(final_size);
-    output_a.truncate(final_size);
-    fail_a.truncate(final_size);
-    fpo_a.truncate(final_size);
-    mrank_a.truncate(final_size);
-    uscore_a.truncate(final_size);
+    // Pad arrays by 256 slots so that `base[state] + 255` is always in bounds for branchless release transition.
+    let padded_size = max_state + 257;
+    base_a.resize(padded_size, 0);
+    check_a.resize(padded_size, -1);
+    output_a.resize(padded_size, None);
+    fail_a.resize(padded_size, 0);
+    fpo_a.resize(padded_size, 0);
+    mrank_a.resize(padded_size, None);
+    uscore_a.resize(padded_size, None);
 
     Trie {
-        base:          HugePageBuffer::from_vec(base_a),
-        check:         HugePageBuffer::from_vec(check_a),
+        base:          base_a,
+        check:         check_a,
         output:        output_a,
         fail:          fail_a,
         fail_pop:      fpo_a,
@@ -618,13 +558,7 @@ mod tests {
     }
 
     #[test]
-    fn huge_pages_and_minimization_test() {
-        let buf = HugePageBuffer::from_vec(vec![10i32, 20i32, 30i32]);
-        assert_eq!(buf.len(), 3);
-        assert_eq!(buf[0], 10);
-        assert_eq!(buf[1], 20);
-        assert_eq!(buf[2], 30);
-
+    fn trie_minimization_test() {
         // Verify state minimization on duplicate suffix nodes
         let ir = make_ir(&[("testing", 1), ("resting", 2), ("nesting", 3)]);
         let trie = build(&ir).unwrap();

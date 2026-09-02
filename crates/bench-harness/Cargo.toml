@@ -15,7 +15,9 @@ path = "src/main.rs"
 vocab-ir     = { path = "../vocab-ir" }
 trie-builder  = { path = "../trie-builder" }
 pretokenizer  = { path = "../pretokenizer" }
-walker       = { path = "../walker" }
+walker        = { path = "../walker" }
+omnitoken     = { path = "../omnitoken" }
 clap.workspace    = true
 anyhow.workspace  = true
 rayon.workspace   = true
+memmap2.workspace = true
