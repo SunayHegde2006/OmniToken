@@ -36,6 +36,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
+          manylinux: ${{ matrix.os == 'ubuntu-latest' && 'auto' || 'off' }}
           args: --release --features python --manifest-path crates/omnitoken/Cargo.toml --out dist
           sccache: 'true'
       - name: Upload wheels

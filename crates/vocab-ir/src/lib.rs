@@ -586,8 +586,8 @@ mod tests {
 
     #[test]
     fn test_read_file_fast_and_load_hf_file() {
-        let temp_dir = std::env::temp_dir();
-        let file_path = temp_dir.join("test_vocab_io_uring.json");
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let file_path = file.path();
         let content = r#"{
             "model": {
                 "type": "BPE",
@@ -595,22 +595,20 @@ mod tests {
                 "merges": ["a b"]
             }
         }"#;
-        std::fs::write(&file_path, content).unwrap();
+        std::fs::write(file_path, content).unwrap();
 
-        let read_bytes = read_file_fast(&file_path).unwrap();
+        let read_bytes = read_file_fast(file_path).unwrap();
         assert_eq!(read_bytes, content.as_bytes());
 
-        let ir = load_hf_file(&file_path).unwrap();
+        let ir = load_hf_file(file_path).unwrap();
         assert_eq!(ir.algo, AlgoKind::Bpe);
         assert_eq!(ir.vocab["ab"], 2);
-
-        let _ = std::fs::remove_file(file_path);
     }
 
     #[test]
     fn test_otk_roundtrip() {
-        let temp_dir = std::env::temp_dir();
-        let otk_path = temp_dir.join("test_vocab.otk");
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let otk_path = file.path();
         let ir = load_hf(r#"{
             "model": {
                 "type": "BPE",
@@ -619,10 +617,9 @@ mod tests {
             }
         }"#).unwrap();
 
-        ir.save_otk(&otk_path).unwrap();
-        let loaded_ir = load_otk_file(&otk_path).unwrap();
+        ir.save_otk(otk_path).unwrap();
+        let loaded_ir = load_otk_file(otk_path).unwrap();
         assert_eq!(loaded_ir.algo, AlgoKind::Bpe);
         assert_eq!(loaded_ir.vocab["xy"], 2);
-        let _ = std::fs::remove_file(otk_path);
     }
 }

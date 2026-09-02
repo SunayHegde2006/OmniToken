@@ -14,5 +14,4 @@ pretokenizer = { path = "../pretokenizer" }
 priority-queue.workspace = true
 anyhow.workspace         = true
 
-[dev-dependencies]
-proptest = "1"
+
