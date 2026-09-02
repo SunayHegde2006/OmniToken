@@ -159,8 +159,7 @@ impl Capabilities {
     pub fn simd_width(&self) -> usize {
         if self.avx512vbmi || self.avx512bw { 64 }
         else if self.avx2 { 32 }
-        else if self.neon { 16 }
-        else if self.wasm_simd { 16 }
+        else if self.neon || self.wasm_simd { 16 }
         else { 1 }
     }
 

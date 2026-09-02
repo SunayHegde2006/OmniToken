@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "omnitoken"
-version = "0.3.0"
+version = "1.0.0"
 description = "Universal, research-grounded high-performance tokenizer engine for BPE, WordPiece, and Unigram vocabularies."
 readme = "README.md"
 authors = [
@@ -21,6 +21,7 @@ classifiers = [
 ]
 
 [tool.maturin]
+manifest-path = "crates/omnitoken/Cargo.toml"
 features = ["python"]
 python-source = "python"
 module-name = "omnitoken._omnitoken"

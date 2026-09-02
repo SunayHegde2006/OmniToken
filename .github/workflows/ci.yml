@@ -44,4 +44,4 @@ jobs:
       - uses: PyO3/maturin-action@v1
         with:
           command: build
-          args: --release --manifest-path crates/omnitoken/Cargo.toml
+          args: --release --features python --manifest-path crates/omnitoken/Cargo.toml

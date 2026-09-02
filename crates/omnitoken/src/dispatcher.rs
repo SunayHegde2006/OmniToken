@@ -162,6 +162,7 @@ pub fn build_byte_vocab_table(
         }
     }    /// Dedicated Bulk Fast Path (Improvement 3 & 2.md): Static Rayon parallel dispatch with ShortWordDict O(1) lookups,
     /// worker-local zero-allocation outputs, byte-pair table acceleration, DAT trie match fast-path, and coverage stats.
+    #[allow(clippy::too_many_arguments)]
     pub fn encode_bulk_fast(
         &self,
         text: &str,
